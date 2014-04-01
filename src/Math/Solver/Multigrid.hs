@@ -36,9 +36,6 @@ import Data.Array.Repa.Repr.ForeignPtr
 import Data.Array.Repa.Repr.Unboxed
 import Data.Array.Repa.Operators.Traversal
 import Data.Array.Repa.Operators.IndexSpace
-import Numeric.LinearAlgebra.LAPACK
-import Data.Packed.Matrix hiding (reshape)
-import Numeric.Container as NC hiding (reshape)
 import Control.Monad.ST
 
 -- TODO: try structed zip with
@@ -73,35 +70,36 @@ replicate sh a = fromFunction sh (\_ -> a)
 
 -- solve Ax=b directly TODO: use different ways to solve
 solve :: (Source a Float, Source b Float) => Array a DIM1 Float -> Array b DIM1 Float -> Float -> Array D DIM1 Float
-solve !v !f !h = sol'
-  where
-    (Z :. s) = extent v
-    mat = buildMat s h
-    b = buildMatrix s 1 (\ !(r,c) -> f `unsafeIndex` (ix1 r))
-    sol = single $ linearSolveR (double mat) (double b)
-    sol' = fromFunction (Z :. s) (\ !(Z :. i) -> sol @@> (i, 0))
-{-# INLINE solve #-}
-
-buildMat !ss !h = buildMatrix ss ss (\ !coord -> case coord of
-                          !(x,y) | x == y -> let cc = to2D x
-                                            in (valNeuman (top cc) + valNeuman (bot cc) +
-                                                valNeuman (left cc) + valNeuman (right cc)) / (h*h)
-                          !(x,y) | (x `div` s == y `div` s && (abs((x `mod` s) - (y `mod` s)) == s ||
-                                   abs((x `mod` s) - (y `mod` s)) == 1)) ||
-                                   (x `mod` s == y `mod` s && (abs((x `div` s) - (y `div` s)) == s ||
-                                   abs((x `div` s) - (y `div` s)) == 1)) -> let cc = to2D x
-                                                                          in -1 * valNeuman cc / (h*h)
-                          otherwise -> 0
-                          )
-  where
-    s = floor $ sqrt $ fromIntegral ss
-    isNeuman !(x, y) = x < 0 || x >= s || y < 0 || y >= s
-    valNeuman !c = if isNeuman c then 1 else 1
-    to2D !x = (x `mod` s, x `div` s)
-    top !(x, y) = (x, y+1)
-    bot !(x, y) = (x, y-1)
-    left !(x, y) = (x+1, y)
-    right !(x, y) = (x-1, y)
+solve !v !f !h = delay v
+-- solve !v !f !h = sol'
+--   where
+--     (Z :. s) = extent v
+--     mat = buildMat s h
+--     b = buildMatrix s 1 (\ !(r,c) -> f `unsafeIndex` (ix1 r))
+--     sol = single $ linearSolveR (double mat) (double b)
+--     sol' = fromFunction (Z :. s) (\ !(Z :. i) -> sol @@> (i, 0))
+-- {-# INLINE solve #-}
+--
+-- buildMat !ss !h = buildMatrix ss ss (\ !coord -> case coord of
+--                           !(x,y) | x == y -> let cc = to2D x
+--                                             in (valNeuman (top cc) + valNeuman (bot cc) +
+--                                                 valNeuman (left cc) + valNeuman (right cc)) / (h*h)
+--                           !(x,y) | (x `div` s == y `div` s && (abs((x `mod` s) - (y `mod` s)) == s ||
+--                                    abs((x `mod` s) - (y `mod` s)) == 1)) ||
+--                                    (x `mod` s == y `mod` s && (abs((x `div` s) - (y `div` s)) == s ||
+--                                    abs((x `div` s) - (y `div` s)) == 1)) -> let cc = to2D x
+--                                                                           in -1 * valNeuman cc / (h*h)
+--                           otherwise -> 0
+--                           )
+--   where
+--     s = floor $ sqrt $ fromIntegral ss
+--     isNeuman !(x, y) = x < 0 || x >= s || y < 0 || y >= s
+--     valNeuman !c = if isNeuman c then 1 else 1
+--     to2D !x = (x `mod` s, x `div` s)
+--     top !(x, y) = (x, y+1)
+--     bot !(x, y) = (x, y-1)
+--     left !(x, y) = (x+1, y)
+--     right !(x, y) = (x-1, y)
 
 -- | Perform one multigrid iteration using the vcycle scheme
 vcycle :: (Source b Float, Source c Float)
