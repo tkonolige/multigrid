@@ -1,1 +1,4 @@
 language: haskell
+install:
+  apt-get install libllvm-dev
+  cabal install --only-dependencies --enable-tests
