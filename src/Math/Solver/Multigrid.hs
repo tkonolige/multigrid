@@ -101,7 +101,7 @@ buildMat !ss !h = buildMatrix ss ss (\ !coord -> case coord of
 
 -- | Perform one multigrid iteration using the vcycle scheme
 vcycle :: (Source b Float, Source c Float)
-       => (forall a. Array a DIM1 Float -> Float -> Array D DIM1 Float) -- * matrix multiplication
+       => (forall a. (Source a Float) => Array a DIM1 Float -> Float -> Array D DIM1 Float) -- * matrix multiplication
 
        -> Array b DIM1 Float                                  -- * initial guess at solution
        -> Array c DIM1 Float                                  -- * right hand side of Ax=b
