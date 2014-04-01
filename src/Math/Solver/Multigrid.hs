@@ -111,10 +111,11 @@ vcycle !matMul !v !f !size !h !nRelax = let (Z :. s) = extent v
                                         in case s <= size of
   False -> runST $ do
     v_ <- computeUnboxedP $ relax v f nRelax h
-    f1 <- computeUnboxedP $ restrict $ f -^ matMul v_ h -- next levels residual
-    vN <- computeUnboxedP $ restrict v_
-    v1 <- computeUnboxedP $ vcycle matMul vN f1 size (h*2) nRelax -- recurse on next level
-    v' <- computeUnboxedP $ v_ +^ interpolate v1 -- take next level and add it to current level
+    f_ <- computeUnboxedP $ f -^ matMul v_ h -- residual
+    f1 <- computeUnboxedP $ restrict f_ -- next levels residual
+    v1 <- computeUnboxedP $ restrict v_ -- next levels solution
+    vN <- computeUnboxedP $ vcycle matMul v1 f1 size (h*2) nRelax -- recurse on next level
+    v' <- computeUnboxedP $ v_ +^ interpolate vN -- take next level and add it to current level
     return $ relax v' f nRelax h -- relax again
   True -> solve v f h -- direct solve
 
