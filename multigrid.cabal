@@ -13,20 +13,32 @@ cabal-version:       >=1.10
 category:            Math
 
 library
-  build-depends:       base >= 4.6 && < 4.7,
-                       repa >= 3.2.0.0 && < 4.0
-  exposed-modules:     Math.Solver.Multigrid
-  hs-source-dirs:      src
-  default-language:    Haskell2010
+  build-depends:     base >= 4.6 && < 4.7,
+                     repa >= 3.2.0.0 && < 4.0
+  exposed-modules:   Math.Solver.Multigrid
+  ghc-options:       -Odph -rtsopts -threaded -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3
+  hs-source-dirs:    src
+  default-language:  Haskell2010
 
-test-suite poisson
+test-suite poisson-test
   type:              exitcode-stdio-1.0
   main-is:           Poisson.hs
-  ghc-options:       -w -O3 -threaded -rtsopts -with-rtsopts=-N
   hs-source-dirs:    test
+  ghc-options:       -Odph -rtsopts -threaded -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3
   default-language:  Haskell2010
   build-depends:     base,
                      multigrid,
                      repa,
                      tasty,
                      tasty-quickcheck
+
+benchmark poisson-bench
+  type:              exitcode-stdio-1.0
+  main-is:           Poisson.hs
+  ghc-options:       -Odph -rtsopts -threaded -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3
+  hs-source-dirs:    bench
+  default-language:  Haskell2010
+  build-depends:     base,
+                     multigrid,
+                     repa,
+                     criterion
