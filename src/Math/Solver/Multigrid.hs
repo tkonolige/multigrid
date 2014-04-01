@@ -1,9 +1,5 @@
-{-# LANGUAGE QuasiQuotes,
-             NoMonomorphismRestriction,
-             FlexibleContexts,
+{-# LANGUAGE FlexibleContexts,
              BangPatterns,
-             ForeignFunctionInterface,
-             ScopedTypeVariables,
              RankNTypes
   #-}
 
