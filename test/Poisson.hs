@@ -1,14 +1,17 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, ScopedTypeVariables #-}
 
-module Main where
+-- a couple of tests using the poisson problem with a 2d stencil
 
 import Prelude hiding (replicate)
 import Math.Solver.Multigrid
 import Data.Array.Repa
 import Data.Array.Repa.Stencil
 import Data.Array.Repa.Stencil.Dim2
-import Data.Array.Repa.Repr.Unboxed
+import Data.Array.Repa.Arbitrary
 import Control.Monad.ST
+
+import Test.Tasty
+import Test.Tasty.QuickCheck
 
 -- simple poisson matrix in two dimensions
 matMul :: (Source a Float) => Array a DIM1 Float -> Float -> Array D DIM1 Float
@@ -26,12 +29,20 @@ matMul !x !h = to1 $ mapStencil2 (BoundConst 0) sten $ to2 x
 {-# INLINE matMul #-}
 
 problem_size :: Int
-problem_size = 127
+problem_size = 127*127
 
-test_zero = runST $ equalsP (replicate (Z :. problem_size) 0) (vcycle matMul (replicate (Z :. problem_size) 0) (replicate (Z :. problem_size) 0) 32 1 2)
+tests :: TestTree
+tests = testGroup "Tests" [properties]
 
-test_poisson = vcycle matMul (replicate (Z :. problem_size) 0) (replicate (Z :. problem_size) 1) 32 1 2
+properties = testGroup "QuickCheck"
+  [ testProperty "vcycle should improve the residual" $
+      forAllUShaped (ix1 problem_size) (\vec ->
+        let zeros = replicate (ix1 problem_size) 0
+            res = vcycle matMul zeros vec 32 1 2
+            r_before = residual (\a -> matMul a 1) zeros vec
+            r_end = residual (\a -> matMul a 1) res vec
+        in  r_before >= r_end
+      )
+  ]
 
-main = do
-    res <- computeUnboxedP test_poisson
-    print res
+main = defaultMain tests

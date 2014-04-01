@@ -28,4 +28,6 @@ test-suite poisson
   default-language:  Haskell2010
   build-depends:     base,
                      multigrid,
-                     repa
+                     repa,
+                     tasty,
+                     tasty-quickcheck

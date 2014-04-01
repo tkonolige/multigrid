@@ -29,7 +29,7 @@ module Math.Solver.Multigrid
 
 import Prelude hiding (replicate)
 import Data.Array.Repa as R
-import Data.Array.Repa.Eval 
+import Data.Array.Repa.Eval
 import Data.Array.Repa.Stencil
 import Data.Array.Repa.Stencil.Dim2
 import Data.Array.Repa.Repr.ForeignPtr
@@ -44,7 +44,11 @@ import Control.Monad.ST
 -- TODO: try structed zip with
 
 -- | residual of Ax=b
-residual :: (Source a b, Floating b, Elt b, Unbox b) => (Array a DIM1 b -> Array a DIM1 b) -> Array a DIM1 b -> Array a DIM1 b -> b
+residual :: (Source a2 b, Source a3 b, Source a4 b, Floating b, Elt b, Unbox b)
+         => (forall a. Source a b => Array a DIM1 b -> Array a2 DIM1 b)
+         -> Array a3 DIM1 b
+         -> Array a4 DIM1 b
+         -> b
 residual !matMul !x !b = runST $ foldAllP (+) 0 $ R.map (**2) (b -^ matMul x)
 
 -- | convert a one dimensional array to a square grid
@@ -69,7 +73,7 @@ replicate sh a = fromFunction sh (\_ -> a)
 
 -- solve Ax=b directly TODO: use different ways to solve
 solve :: (Source a Float, Source b Float) => Array a DIM1 Float -> Array b DIM1 Float -> Float -> Array D DIM1 Float
-solve !v !f !h = sol' 
+solve !v !f !h = sol'
   where
     (Z :. s) = extent v
     mat = buildMat s h
@@ -101,14 +105,16 @@ buildMat !ss !h = buildMatrix ss ss (\ !coord -> case coord of
 
 -- | Perform one multigrid iteration using the vcycle scheme
 vcycle :: (Source b Float, Source c Float)
-       => (forall a. (Source a Float) => Array a DIM1 Float -> Float -> Array D DIM1 Float) -- * matrix multiplication
-
-       -> Array b DIM1 Float                                  -- * initial guess at solution
-       -> Array c DIM1 Float                                  -- * right hand side of Ax=b
-       -> Int                                                 -- * size to perform direct solve on
-       -> Float                                               -- * initial size of each grid cell
-       -> Int                                                 -- * number of time to relax at each level
-       -> Array D DIM1 Float                                  -- * solution to linear system of equations
+       => (forall a. (Source a Float)
+          => Array a DIM1 Float
+          -> Float
+          -> Array D DIM1 Float) -- * matrix multiplication using array and grid size
+       -> Array b DIM1 Float     -- * initial guess at solution
+       -> Array c DIM1 Float     -- * right hand side of Ax=b
+       -> Int                    -- * size to perform direct solve on
+       -> Float                  -- * initial size of each grid cell
+       -> Int                    -- * number of time to relax at each level
+       -> Array D DIM1 Float     -- * solution to linear system of equations
 vcycle !matMul !v !f !size !h !nRelax = let (Z :. s) = extent v
                                         in case s <= size of
   False -> runST $ do
@@ -120,7 +126,12 @@ vcycle !matMul !v !f !size !h !nRelax = let (Z :. s) = extent v
     return $ relax v' f nRelax h -- relax again
   True -> solve v f h -- direct solve
 
-relax :: (Fractional c, Unbox c, Source a c, Source b c) => Array a DIM1 c -> Array b DIM1 c -> Int -> c -> Array D DIM1 c
+relax :: (Fractional c, Unbox c, Source a c, Source b c)
+      => Array a DIM1 c
+      -> Array b DIM1 c
+      -> Int
+      -> c
+      -> Array D DIM1 c
 relax !v  _  0  _ = delay v
 relax !v !f !n !h = runST $ do
   relaxed <- computeUnboxedP $ jacobi v f h
@@ -130,7 +141,11 @@ relax !v !f !n !h = runST $ do
 -- weighted jacobi relaxation
 -- TODO: consider structed map
 -- TODO: make sure first array is fully evaluated
-jacobi :: (Fractional c, Unbox c, Source a c, Source b c) => Array a DIM1 c -> Array b DIM1 c -> c -> Array D DIM1 c
+jacobi :: (Fractional c, Unbox c, Source a c, Source b c)
+       => Array a DIM1 c
+       -> Array b DIM1 c
+       -> c
+       -> Array D DIM1 c
 jacobi !v !f !h = (R.map (* (w / (4/(h*h)))) (f -^ (to1 $ mapStencil2 (BoundConst 0) sten (to2 v)))) +^ (R.map (* (1-w)) v)
   where
     w = 2/3
@@ -151,9 +166,9 @@ jacobi !v !f !h = (R.map (* (w / (4/(h*h)))) (f -^ (to1 $ mapStencil2 (BoundCons
 -- V'(i,j)
 -- = (1-w)V(i,j)+w/4*(V(i+1,j)+V'(i-1,j)+V(i,j+1)+V'(i,j-1)+h^2*p(i,j))
 -- sor :: (Fractional c, Unbox c, SOurce a c, Source b c) => Array a DIM1 c -> Array b DIM1 c -> Int -> c -> Array D DIM1 c
--- sor !v !f !n !h = 
+-- sor !v !f !n !h =
 --   where
---     relaxedOdd = 
+--     relaxedOdd =
 
 restrict :: (Fractional b, Source a b) => Array a DIM1 b -> Array D DIM1 b
 restrict !x = to1 $ shrinkVec $ to2 x
@@ -175,7 +190,7 @@ shrinkVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) ->
 {-# INLINE shrinkVec #-}
 
 growVec :: (Fractional b, Source r b) => Array r DIM2 b -> Array D DIM2 b
-growVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) -> 
+growVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) ->
               let f' (Z :. x :. y) | x < 0 || x >= width || y < 0 || y >= height = 0
                   f' c = f c
                   {-# INLINE f' #-}
