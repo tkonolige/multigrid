@@ -34,8 +34,6 @@ import Data.Array.Repa.Operators.Traversal
 import Data.Array.Repa.Operators.IndexSpace
 import Control.Monad.ST
 
--- TODO: try structed zip with
-
 -- | residual of Ax=b
 residual :: (Source a2 b, Source a3 b, Source a4 b, Floating b, Elt b, Unbox b)
          => (forall a. Source a b => Array a DIM1 b -> Array a2 DIM1 b)
