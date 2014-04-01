@@ -129,7 +129,6 @@ relax !v  _  0  _ = delay v
 relax !v !f !n !h = runST $ do
   relaxed <- computeUnboxedP $ jacobi v f h
   return $ relax relaxed f (n-1) h
-{-# INLINE relax #-}
 
 -- weighted jacobi relaxation
 -- TODO: consider structed map
@@ -153,7 +152,6 @@ jacobi !v !f !h = (R.map (* (w / (4/(h*h)))) (f -^ (to1 $ mapStencil2 (BoundCons
                   _             -> Nothing
     {-# INLINE func #-}
     sten = makeStencil2 3 3 func
-{-# INLINE jacobi #-}
 
 -- sor smoothing
 -- V'(i,j)
@@ -165,11 +163,9 @@ jacobi !v !f !h = (R.map (* (w / (4/(h*h)))) (f -^ (to1 $ mapStencil2 (BoundCons
 
 restrict :: (Fractional b, Source a b) => Array a DIM1 b -> Array D DIM1 b
 restrict !x = to1 $ shrinkVec $ to2 x
-{-# INLINE restrict #-}
 
 interpolate :: (Fractional b, Source a b) => Array a DIM1 b -> Array D DIM1 b
 interpolate !x = to1 $ growVec $ to2 x
-{-# INLINE interpolate #-}
 
 shrinkVec :: (Fractional a, Source b a) => Array b DIM2 a -> Array D DIM2 a
 shrinkVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) ->
@@ -180,7 +176,6 @@ shrinkVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) ->
                      + 4 * f (Z :. 2 * x + 1 :. 2 * y + 1)) / 16)
   where
     newDim !(Z :. x :. y) = (Z :. x `div` 2 :. y `div` 2)
-{-# INLINE shrinkVec #-}
 
 growVec :: (Fractional b, Source r b) => Array r DIM2 b -> Array D DIM2 b
 growVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) ->
@@ -201,4 +196,3 @@ growVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) ->
   where
     (Z :. width :. height) = extent v
     newDim !(Z :. x :. y) = (Z :. x * 2 + 1 :. y * 2 + 1)
-{-# INLINE growVec #-}
