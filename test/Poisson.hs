@@ -14,18 +14,14 @@ import Test.Tasty
 import Test.Tasty.QuickCheck
 
 -- simple poisson matrix in two dimensions
-matMul :: (Source a Float) => Array a DIM1 Float -> Float -> Array D DIM1 Float
-matMul !x !h = to1 $ mapStencil2 (BoundConst 0) sten $ to2 x
-    where
-      sten = makeStencil2 3 3 func
-      func = \ !ix -> case ix of
-                          Z :. -1 :. 0  -> Just $ -1/(h*h)
-                          Z :. 0  :. -1 -> Just $ -1/(h*h)
-                          Z :. 1  :. 0  -> Just $ -1/(h*h)
-                          Z :. 0  :. 1  -> Just $ -1/(h*h)
-                          Z :. 0  :. 0  -> Just $ 4/(h*h)
-                          _             -> Nothing
-      {-# INLINE func #-}
+matMul :: DIM2 -> Maybe Float
+matMul !ix = case ix of
+                Z :. -1 :. 0  -> Just $ -1
+                Z :. 0  :. -1 -> Just $ -1
+                Z :. 1  :. 0  -> Just $ -1
+                Z :. 0  :. 1  -> Just $ -1
+                Z :. 0  :. 0  -> Just $  4
+                _             -> Nothing
 {-# INLINE matMul #-}
 
 problem_size :: Int
@@ -36,11 +32,11 @@ tests = testGroup "Tests" [properties]
 
 properties = testGroup "QuickCheck"
   [ testProperty "vcycle should improve the residual" $
-      forAllUShaped (ix1 problem_size) (\vec ->
-        let zeros = replicate (ix1 problem_size) 0
-            res = vcycle matMul zeros vec 32 1 2
-            r_before = residual (\a -> matMul a 1) zeros vec
-            r_end = residual (\a -> matMul a 1) res vec
+      forAllUShaped (ix2 problem_size problem_size) (\vec ->
+        let zeros = replicate (ix2 problem_size problem_size) 0
+            res = vcycle (ix2 3 3) matMul zeros vec 32 1 2
+            r_before = residual (ix2 3 3) matMul zeros vec
+            r_end = residual (ix2 3 3) matMul res vec
         in  r_before >= r_end
       )
   ]

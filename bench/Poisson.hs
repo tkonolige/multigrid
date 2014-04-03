@@ -12,22 +12,17 @@ import Criterion
 import Criterion.Main
 
 -- simple poisson matrix in two dimensions
-matMul :: (Source a Float) => Array a DIM1 Float -> Float -> Array D DIM1 Float
-matMul !x !h = to1 $ mapStencil2 (BoundConst 0) sten $ to2 x
-    where
-      sten = makeStencil2 3 3 func
-      func = \ !ix -> case ix of
-                          Z :. -1 :. 0  -> Just $ -1/(h*h)
-                          Z :. 0  :. -1 -> Just $ -1/(h*h)
-                          Z :. 1  :. 0  -> Just $ -1/(h*h)
-                          Z :. 0  :. 1  -> Just $ -1/(h*h)
-                          Z :. 0  :. 0  -> Just $ 4/(h*h)
-                          _             -> Nothing
-      {-# INLINE func #-}
+matMul !ix = case ix of
+                Z :. -1 :. 0  -> Just $ -1
+                Z :. 0  :. -1 -> Just $ -1
+                Z :. 1  :. 0  -> Just $ -1
+                Z :. 0  :. 1  -> Just $ -1
+                Z :. 0  :. 0  -> Just $  4
+                _             -> Nothing
 {-# INLINE matMul #-}
 
-bench_vcycle :: Int -> Int -> Int -> Array U DIM1 Float
-bench_vcycle size min_size num_smooth = runST $ computeUnboxedP $ vcycle matMul (replicate (ix1 (size * size)) 0) (replicate (ix1 (size * size)) 1) min_size 1 num_smooth
+bench_vcycle :: Int -> Int -> Int -> Array U DIM2 Float
+bench_vcycle size min_size num_smooth = runST $ computeUnboxedP $ vcycle (ix2 3 3) matMul (replicate (ix2 size size) 0) (replicate (ix2 size size) 1) min_size 1 num_smooth
 
 bench_vcycle_size size = bench_vcycle size 32 2
 

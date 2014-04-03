@@ -33,14 +33,16 @@ import Data.Array.Repa.Repr.Unboxed
 import Data.Array.Repa.Operators.Traversal
 import Data.Array.Repa.Operators.IndexSpace
 import Control.Monad.ST
+import Control.Applicative
 
 -- | residual of Ax=b
-residual :: (Source a2 b, Source a3 b, Source a4 b, Floating b, Elt b, Unbox b)
-         => (forall a. Source a b => Array a DIM1 b -> Array a2 DIM1 b)
-         -> Array a3 DIM1 b
-         -> Array a4 DIM1 b
+residual :: (Source a1 b, Source a2 b, Floating b, Elt b, Unbox b)
+         => DIM2
+         -> (DIM2 -> Maybe b)
+         -> Array a1 DIM2 b
+         -> Array a2 DIM2 b
          -> b
-residual !matMul !x !b = runST $ foldAllP (+) 0 $ R.map (**2) (b -^ matMul x)
+residual !sh !matMul !x !b = runST $ foldAllP (+) 0 $ R.map (**2) (b -^ mapStencil2 (BoundConst 0) (makeStencil sh matMul) x)
 
 -- | convert a one dimensional array to a square grid
 to2 :: Source a b => Array a DIM1 b -> Array D DIM2 b
@@ -63,7 +65,7 @@ replicate :: (Shape sh) => sh -> a -> Array D sh a
 replicate sh a = fromFunction sh (\_ -> a)
 
 -- solve Ax=b directly TODO: use different ways to solve
-solve :: (Source a Float, Source b Float) => Array a DIM1 Float -> Array b DIM1 Float -> Float -> Array D DIM1 Float
+solve :: (Source a Float, Source b Float, Shape sh) => Array a sh Float -> Array b sh Float -> Float -> Array D sh Float
 solve !v !f !h = delay v
 -- solve !v !f !h = sol'
 --   where
@@ -97,61 +99,69 @@ solve !v !f !h = delay v
 
 -- | Perform one multigrid iteration using the vcycle scheme
 vcycle :: (Source b Float, Source c Float)
-       => (forall a. (Source a Float)
-          => Array a DIM1 Float
-          -> Float
-          -> Array D DIM1 Float) -- * matrix multiplication using array and grid size
-       -> Array b DIM1 Float     -- * initial guess at solution
-       -> Array c DIM1 Float     -- * right hand side of Ax=b
-       -> Int                    -- * size to perform direct solve on
-       -> Float                  -- * initial size of each grid cell
-       -> Int                    -- * number of time to relax at each level
-       -> Array D DIM1 Float     -- * solution to linear system of equations
-vcycle !matMul !v !f !size !h !nRelax = let (Z :. s) = extent v
-                                        in case s <= size of
-  False -> runST $ do
-    v_ <- computeUnboxedP $ relax v f nRelax h
-    f_ <- computeUnboxedP $ f -^ matMul v_ h -- residual
-    f1 <- computeUnboxedP $ restrict f_ -- next levels residual
-    v1 <- computeUnboxedP $ restrict v_ -- next levels solution
-    vN <- computeUnboxedP $ vcycle matMul v1 f1 size (h*2) nRelax -- recurse on next level
-    v' <- computeUnboxedP $ v_ +^ interpolate vN -- take next level and add it to current level
-    return $ relax v' f nRelax h -- relax again
-  True -> solve v f h -- direct solve
+       => DIM2                  -- * size of stencil
+       -> (DIM2 -> Maybe Float) -- * stencil function
+       -> Array b DIM2 Float    -- * initial guess at solution
+       -> Array c DIM2 Float    -- * right hand side of Ax=b
+       -> Int                   -- * size to perform direct solve on
+       -> Float                 -- * initial size of each grid cell
+       -> Int                   -- * number of time to relax at each level
+       -> Array D DIM2 Float    -- * solution to linear system of equations
+vcycle !stenSize !sten !v !f !size !h !nRelax = 
+    let (Z :. s :. _) = extent v
+    in case s <= size of
+      False -> runST $ do
+        v_ <- computeUnboxedP $ relax diag offdiag v f nRelax
+        f_ <- computeUnboxedP $ f -^ mapStencil2 (BoundConst 0) matMul v_ -- residual
+        f1 <- computeUnboxedP $ restrict f_ -- next levels residual
+        v1 <- computeUnboxedP $ restrict v_ -- next levels solution
+        vN <- computeUnboxedP $ vcycle stenSize sten v1 f1 size (h*2) nRelax -- recurse on next level
+        v' <- computeUnboxedP $ v_ +^ interpolate vN -- take next level and add it to current level
+        return $ relax diag offdiag v' f_ nRelax -- relax again
+      True -> solve v f h -- direct solve
+  where
+    matMul = makeStencil stenSize (\ !i -> (/(h*h)) <$> sten i)
+    Just diag = (/(h*h)) <$> sten (Z :. 0 :. 0)
+    offdiag = makeStencil stenSize (\ !i@(Z :. x :. y) -> case x == y of
+                                                         True -> Nothing
+                                                         False -> (/(h*h)) <$> sten i
+                                   )
 
 relax :: (Fractional c, Unbox c, Source a c, Source b c)
-      => Array a DIM1 c
-      -> Array b DIM1 c
+      => c
+      -> Stencil DIM2 c
+      -> Array a DIM2 c
+      -> Array b DIM2 c
       -> Int
-      -> c
-      -> Array D DIM1 c
-relax !v  _  0  _ = delay v
-relax !v !f !n !h = runST $ do
-  relaxed <- computeUnboxedP $ jacobi v f h
-  return $ relax relaxed f (n-1) h
+      -> Array D DIM2 c
+relax  _     _       !v  _  0 = delay v
+relax !diag !offdiag !v !f !n = runST $ do
+  relaxed <- computeUnboxedP $ jacobi diag offdiag v f
+  return $ relax diag offdiag relaxed f (n-1)
 
 -- weighted jacobi relaxation
 -- TODO: consider structed map
 -- TODO: make sure first array is fully evaluated
 jacobi :: (Fractional c, Unbox c, Source a c, Source b c)
-       => Array a DIM1 c
-       -> Array b DIM1 c
-       -> c
-       -> Array D DIM1 c
-jacobi !v !f !h = (R.map (* (w / (4/(h*h)))) (f -^ (to1 $ mapStencil2 (BoundConst 0) sten (to2 v)))) +^ (R.map (* (1-w)) v)
+       => c
+       -> Stencil DIM2 c
+       -> Array a DIM2 c
+       -> Array b DIM2 c
+       -> Array D DIM2 c
+jacobi !diag !offdiag !v !f = (R.map (* (w / diag)) (f -^ mapStencil2 (BoundConst 0) offdiag v)) +^ (R.map (* (1-w)) v)
   where
     w = 2/3
-    (Z :. s)   = extent v
-    width      = floor $ sqrt $ fromIntegral s
-    val        = -1/(h*h)
-    func !ix = case ix of
-                  Z :. -1 :. 0  -> Just val
-                  Z :. 0  :. -1 -> Just val
-                  Z :. 1  :. 0  -> Just val
-                  Z :. 0  :. 1  -> Just val
-                  _             -> Nothing
-    {-# INLINE func #-}
-    sten = makeStencil2 3 3 func
+    -- (Z :. s)   = extent v
+    -- width      = floor $ sqrt $ fromIntegral s
+    -- val        = -1/(h*h)
+    -- func !ix = case ix of
+    --               Z :. -1 :. 0  -> Just val
+    --               Z :. 0  :. -1 -> Just val
+    --               Z :. 1  :. 0  -> Just val
+    --               Z :. 0  :. 1  -> Just val
+    --               _             -> Nothing
+    -- {-# INLINE func #-}
+    -- sten = makeStencil2 3 3 func
 
 -- sor smoothing
 -- V'(i,j)
@@ -161,11 +171,11 @@ jacobi !v !f !h = (R.map (* (w / (4/(h*h)))) (f -^ (to1 $ mapStencil2 (BoundCons
 --   where
 --     relaxedOdd =
 
-restrict :: (Fractional b, Source a b) => Array a DIM1 b -> Array D DIM1 b
-restrict !x = to1 $ shrinkVec $ to2 x
+restrict :: (Fractional b, Source a b) => Array a DIM2 b -> Array D DIM2 b
+restrict !x = shrinkVec x
 
-interpolate :: (Fractional b, Source a b) => Array a DIM1 b -> Array D DIM1 b
-interpolate !x = to1 $ growVec $ to2 x
+interpolate :: (Fractional b, Source a b) => Array a DIM2 b -> Array D DIM2 b
+interpolate !x = growVec x
 
 shrinkVec :: (Fractional a, Source b a) => Array b DIM2 a -> Array D DIM2 a
 shrinkVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) ->
