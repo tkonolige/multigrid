@@ -15,7 +15,7 @@ category:            Math
 library
   build-depends:     base >= 4.6 && < 4.8,
                      repa >= 3.2.0.0 && < 4.0,
-                     ghc-prim == 0.3.1.0
+                     ghc-prim
   exposed-modules:   Math.Solver.Multigrid
   ghc-options:       -Odph 
                      -rtsopts 
