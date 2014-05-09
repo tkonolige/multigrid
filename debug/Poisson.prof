@@ -1,0 +1,41 @@
+	Sun Apr  6 18:55 2014 Time and Allocation Profiling Report  (Final)
+
+	   Poisson +RTS -p -RTS
+
+	total time  =        0.80 secs   (802 ticks @ 1000 us, 1 processor)
+	total alloc = 610,956,128 bytes  (excludes profiling overheads)
+
+COST CENTRE MODULE                %time %alloc
+
+main        Main                   62.5    8.4
+jacobi      Math.Solver.Multigrid  37.4   91.4
+
+
+                                                                individual     inherited
+COST CENTRE    MODULE                         no.     entries  %time %alloc   %time %alloc
+
+MAIN           MAIN                            79           0    0.0    0.0   100.0  100.0
+ main          Main                           159           0   62.2    8.2    99.8   99.8
+  grow         Math.Solver.Multigrid          168           0    0.1    0.3     0.1    0.3
+  jacobi       Math.Solver.Multigrid          164           0   37.4   91.4    37.4   91.4
+ CAF           Main                           157           0    0.0    0.0     0.2    0.2
+  problem_size Main                           162           1    0.0    0.0     0.0    0.0
+  main         Main                           158           1    0.2    0.1     0.2    0.2
+   grow        Math.Solver.Multigrid          167           4    0.0    0.0     0.0    0.0
+   shrink      Math.Solver.Multigrid          165           8    0.0    0.0     0.0    0.0
+   jacobi      Math.Solver.Multigrid          163          24    0.0    0.0     0.0    0.0
+   main.vec    Main                           161           1    0.0    0.0     0.0    0.0
+   main.zeros  Main                           160           1    0.0    0.0     0.0    0.0
+ CAF           Math.Solver.Multigrid          156           0    0.0    0.0     0.0    0.0
+ CAF           Data.Array.Repa.Eval.Gang      155           0    0.0    0.0     0.0    0.0
+ CAF           Data.Array.Repa.Repr.Delayed   153           0    0.0    0.0     0.0    0.0
+ CAF           GHC.Conc.Signal                126           0    0.0    0.0     0.0    0.0
+ CAF           GHC.Conc.Sync                  125           0    0.0    0.0     0.0    0.0
+ CAF           GHC.IO.Encoding                118           0    0.0    0.0     0.0    0.0
+ CAF           GHC.IO.Encoding.Iconv          116           0    0.0    0.0     0.0    0.0
+ CAF           GHC.IO.Handle.FD               109           0    0.0    0.0     0.0    0.0
+ CAF           Debug.Trace                     98           0    0.0    0.0     0.0    0.0
+ CAF           System.Posix.Internals          96           0    0.0    0.0     0.0    0.0
+ CAF           GHC.Event.Control               93           0    0.0    0.0     0.0    0.0
+ CAF           GHC.Event.Internal              92           0    0.0    0.0     0.0    0.0
+ CAF           GHC.Event.Thread                88           0    0.0    0.0     0.0    0.0
