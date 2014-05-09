@@ -25,7 +25,7 @@ matMul !ix = case ix of
 {-# INLINE matMul #-}
 
 problem_size :: Int
-problem_size = 127*127
+problem_size = 127
 
 tests :: TestTree
 tests = testGroup "Tests" [properties]
@@ -33,11 +33,12 @@ tests = testGroup "Tests" [properties]
 properties = testGroup "QuickCheck"
   [ testProperty "vcycle should improve the residual" $
       forAllUShaped (ix2 problem_size problem_size) (\vec ->
-        let zeros = replicate (ix2 problem_size problem_size) 0
-            res = vcycle (ix2 3 3) matMul zeros vec 32 1 2
-            r_before = residual (ix2 3 3) matMul zeros vec
-            r_end = residual (ix2 3 3) matMul res vec
-        in  r_before >= r_end
+        runST $ do
+          zeros <- computeUnboxedP $ replicate (ix2 problem_size problem_size) 0
+          res <- computeUnboxedP $ vcycle (ix2 3 3) matMul zeros vec 32 1 2
+          let r_before = residual (ix2 3 3) matMul zeros vec
+              r_end = residual (ix2 3 3) matMul res vec
+          return $ r_before >= r_end
       )
   ]
 

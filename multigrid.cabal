@@ -13,18 +13,48 @@ cabal-version:       >=1.10
 category:            Math
 
 library
-  build-depends:     base >= 4.6 && < 4.7,
-                     repa >= 3.2.0.0 && < 4.0
+  build-depends:     base >= 4.6 && < 4.8,
+                     repa >= 3.2.0.0 && < 4.0,
+                     ghc-prim == 0.3.1.0
   exposed-modules:   Math.Solver.Multigrid
-  ghc-options:       -Odph -rtsopts -threaded -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3
+  ghc-options:       -Odph 
+                     -rtsopts 
+                     -threaded 
+                     -fno-liberate-case 
+                     -funfolding-use-threshold100 
+                     -funfolding-keeness-factor100 
+                     -fllvm 
+                     -optlo-O3
   hs-source-dirs:    src
   default-language:  Haskell2010
+
+executable debug
+  build-depends:     base,
+                     repa,
+                     multigrid
+  ghc-options:       -Odph 
+                     -rtsopts -threaded
+                     -fno-liberate-case
+                     -funfolding-use-threshold100
+                     -funfolding-keeness-factor100
+                     -fllvm
+                     -optlo-O3
+  hs-source-dirs:    debug
+  default-language:  Haskell2010
+  main-is:           Poisson.hs
 
 test-suite poisson-test
   type:              exitcode-stdio-1.0
   main-is:           Poisson.hs
   hs-source-dirs:    test
-  ghc-options:       -Odph -rtsopts -threaded -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3
+  ghc-options:       -Odph
+                     -rtsopts
+                     -threaded
+                     -fno-liberate-case
+                     -funfolding-use-threshold100
+                     -funfolding-keeness-factor100
+                     -fllvm
+                     -optlo-O3
   default-language:  Haskell2010
   build-depends:     base,
                      multigrid,
@@ -35,10 +65,21 @@ test-suite poisson-test
 benchmark poisson-bench
   type:              exitcode-stdio-1.0
   main-is:           Poisson.hs
-  ghc-options:       -Odph -rtsopts -threaded -fno-liberate-case -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fllvm -optlo-O3
+  ghc-options:       -Odph
+                     -rtsopts 
+                     -threaded 
+                     -fno-liberate-case 
+                     -funfolding-use-threshold100 
+                     -funfolding-keeness-factor100 
+                     -fllvm 
+                     -optlo-O3
   hs-source-dirs:    bench
+  C-sources:         bench/jacobi.c
+  CC-Options:        -O3
   default-language:  Haskell2010
   build-depends:     base,
                      multigrid,
                      repa,
-                     criterion
+                     criterion,
+                     hastache < 0.6 
+                     -- fix for criterion

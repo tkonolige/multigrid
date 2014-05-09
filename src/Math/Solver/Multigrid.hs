@@ -21,6 +21,7 @@ module Math.Solver.Multigrid
   , to1
   , replicate
   , residual
+  , jacobi
   ) where
 
 import Prelude hiding (replicate)
@@ -34,6 +35,9 @@ import Data.Array.Repa.Operators.Traversal
 import Data.Array.Repa.Operators.IndexSpace
 import Control.Monad.ST
 import Control.Applicative
+import GHC.Exts
+
+import Debug.Trace
 
 -- | residual of Ax=b
 residual :: (Source a1 b, Source a2 b, Floating b, Elt b, Unbox b)
@@ -98,6 +102,7 @@ solve !v !f !h = delay v
 --     right !(x, y) = (x-1, y)
 
 -- | Perform one multigrid iteration using the vcycle scheme
+--   Arguements should be fully evaluated.
 vcycle :: (Source b Float, Source c Float)
        => DIM2                  -- * size of stencil
        -> (DIM2 -> Maybe Float) -- * stencil function
@@ -107,27 +112,41 @@ vcycle :: (Source b Float, Source c Float)
        -> Float                 -- * initial size of each grid cell
        -> Int                   -- * number of time to relax at each level
        -> Array D DIM2 Float    -- * solution to linear system of equations
-vcycle !stenSize !sten !v !f !size !h !nRelax = 
+vcycle !stenSize !sten !v !f !size !h !nRelax = {-# SCC "vcycle" #-}
     let (Z :. s :. _) = extent v
     in case s <= size of
       False -> runST $ do
-        v_ <- computeUnboxedP $ relax diag offdiag v f nRelax
-        f_ <- computeUnboxedP $ f -^ mapStencil2 (BoundConst 0) matMul v_ -- residual
-        f1 <- computeUnboxedP $ restrict f_ -- next levels residual
-        v1 <- computeUnboxedP $ restrict v_ -- next levels solution
+        -- traceShow s (return ())
+        -- trace ("begining: " Prelude.++ show (residual stenSize sten v f)) (return ())
+        -- v_ <- {-# SCC "realx1" #-} computeUnboxedP $ relax diag (inline offdiag) v f nRelax
+        v_ <- {-# SCC "realx1" #-} computeUnboxedP $ jacobi diag (inline offdiag) v f
+        -- trace ("relax1: " Prelude.++ show (residual stenSize sten v_ f)) (return ())
+        -- TODO: should use szipWith
+        f_ <- {-# SCC "residual" #-} computeUnboxedP $ f -^ mapStencil2 (BoundConst 0) matMul v_ -- residual
+        f1 <- {-# SCC "restrict1" #-} computeUnboxedP $ restrict f_ -- next levels residual
+        v1 <- {-# SCC "restrict2" #-} computeUnboxedP $ restrict v_ -- next levels solution
         vN <- computeUnboxedP $ vcycle stenSize sten v1 f1 size (h*2) nRelax -- recurse on next level
-        v' <- computeUnboxedP $ v_ +^ interpolate vN -- take next level and add it to current level
-        return $ relax diag offdiag v' f_ nRelax -- relax again
-      True -> solve v f h -- direct solve
+        v' <- {-# SCC "interpolate" #-} computeUnboxedP $ v_ +^ interpolate vN -- take next level and add it to current level
+        -- trace ("after recurse: " Prelude.++ show (residual stenSize sten v' f)) (return ())
+        let res = {-# SCC "relax2" #-} relax diag offdiag v' f nRelax -- relax again
+        -- trace ("relax2: " Prelude.++ show (residual stenSize sten res f)) (return ())
+        return res
+      True -> relax diag offdiag v f (nRelax*4) -- solve v f h -- direct solve
   where
-    matMul = makeStencil stenSize (\ !i -> (/(h*h)) <$> sten i)
-    Just diag = (/(h*h)) <$> sten (Z :. 0 :. 0)
-    offdiag = makeStencil stenSize (\ !i@(Z :. x :. y) -> case x == y of
-                                                         True -> Nothing
-                                                         False -> (/(h*h)) <$> sten i
-                                   )
+    func !i = (/(h*h)) <$> sten i
+    {-# INLINE func #-}
+    matMul = makeStencil stenSize func
+    {-# INLINE matMul #-}
+    !(Just diag) = (/(h*h)) <$> sten (Z :. 0 :. 0)
+    offdiag' !i@(Z :. x :. y) = inline $ case x == y of
+                                   True -> Nothing
+                                   False -> inline $ (/(h*h)) <$> (inline sten i)
+    {-# INLINE offdiag' #-}
+    offdiag = makeStencil stenSize (inline offdiag')
+    {-# INLINE offdiag #-}
+{-# INLINE vcycle #-}
 
-relax :: (Fractional c, Unbox c, Source a c, Source b c)
+relax :: (Fractional c, Unbox c, Source a c, Source b c, Elt c)
       => c
       -> Stencil DIM2 c
       -> Array a DIM2 c
@@ -136,8 +155,9 @@ relax :: (Fractional c, Unbox c, Source a c, Source b c)
       -> Array D DIM2 c
 relax  _     _       !v  _  0 = delay v
 relax !diag !offdiag !v !f !n = runST $ do
-  relaxed <- computeUnboxedP $ jacobi diag offdiag v f
+  relaxed <- computeUnboxedP $ inline $ jacobi diag (inline offdiag) v f
   return $ relax diag offdiag relaxed f (n-1)
+{-# INLINE relax #-}
 
 -- weighted jacobi relaxation
 -- TODO: consider structed map
@@ -147,21 +167,14 @@ jacobi :: (Fractional c, Unbox c, Source a c, Source b c)
        -> Stencil DIM2 c
        -> Array a DIM2 c
        -> Array b DIM2 c
-       -> Array D DIM2 c
-jacobi !diag !offdiag !v !f = (R.map (* (w / diag)) (f -^ mapStencil2 (BoundConst 0) offdiag v)) +^ (R.map (* (1-w)) v)
+       -> Array PC5 DIM2 c
+jacobi !diag !offdiag !v !f = {-# SCC "jacobi" #-} (R.map (* (1-w)) v) +^+ (smap (* (w / diag)) (f -^- d))
   where
+    d = mapStencil2 (BoundConst 0) (inline offdiag) v
     w = 2/3
-    -- (Z :. s)   = extent v
-    -- width      = floor $ sqrt $ fromIntegral s
-    -- val        = -1/(h*h)
-    -- func !ix = case ix of
-    --               Z :. -1 :. 0  -> Just val
-    --               Z :. 0  :. -1 -> Just val
-    --               Z :. 1  :. 0  -> Just val
-    --               Z :. 0  :. 1  -> Just val
-    --               _             -> Nothing
-    -- {-# INLINE func #-}
-    -- sten = makeStencil2 3 3 func
+    (-^-) = szipWith (-)
+    (+^+) = szipWith (+)
+{-# INLINE jacobi #-}
 
 -- sor smoothing
 -- V'(i,j)
@@ -172,10 +185,10 @@ jacobi !diag !offdiag !v !f = (R.map (* (w / diag)) (f -^ mapStencil2 (BoundCons
 --     relaxedOdd =
 
 restrict :: (Fractional b, Source a b) => Array a DIM2 b -> Array D DIM2 b
-restrict !x = shrinkVec x
+restrict !x = {-# SCC "shrink" #-} shrinkVec x
 
 interpolate :: (Fractional b, Source a b) => Array a DIM2 b -> Array D DIM2 b
-interpolate !x = growVec x
+interpolate !x = {-# SCC "grow" #-} growVec x
 
 shrinkVec :: (Fractional a, Source b a) => Array b DIM2 a -> Array D DIM2 a
 shrinkVec !v = unsafeTraverse v newDim (\ !f !(Z :. x :. y) ->
